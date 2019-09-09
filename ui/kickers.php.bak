@@ -1,0 +1,60 @@
+<?php
+
+class Kicker extends SmartDiv{
+
+}
+class UnderlinedKicker extends Kicker{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->border_bottom("2px solid crimson");
+    }
+}
+
+class KickerForExporterReviews extends UnderlinedKicker{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->add_child("LATEST POSTS");
+    }
+}
+
+class KickerForMostPurhased extends UnderlinedKicker{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->add_child("TIPS AND ADVICE");
+    }
+}
+
+class KickerForNews extends UnderlinedKicker{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->add_child("REVIEWS AND COMMENTS");
+    }
+}
+class KickerForCareers extends UnderlinedKicker{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->add_child("QUICK FACTS");
+    }
+}
+
+class KickerForCarMaintenance extends UnderlinedKicker{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->add_child("ONGOING DISCUSSIONS");
+    }
+}
+
+class KickerForCustomContent extends UnderlinedKicker{
+    public function __construct($content)
+    {
+        parent::__construct();
+        $this->add_child($content);
+    }
+}
+

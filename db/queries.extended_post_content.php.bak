@@ -1,0 +1,484 @@
+<?php
+class QueryForEditExtendedPostContent extends SQLCommandListForMotokaviews{
+    private $input_text;
+
+    private $sql_command_list;
+    private $entity_id;
+
+    public function __construct($file_name,$input_text)
+    {
+        parent::__construct();
+        $this->input_text = $input_text;
+        $this->sql_command_list = $this;
+        $this->entity_id = ConvertToSQLValue::ifNotSQLValue(
+            EntityIdFromFileName::get($file_name)
+        );
+
+
+        $this->add($this->sql_for_delete_current_post_content());
+        $this->set_new_post_content();
+        $this->add(
+            $this->sqlForUpdateExtendedPostContentForDraftPost($input_text)
+        );
+
+    }
+
+    private function set_new_post_content()
+    {
+        $this->process($this->input_text);
+        //return $this->sql_command_list."";
+    }
+
+    private function process($input_text)
+    {
+        #1. get input text stream
+        #2. split into array of command lines using newline character
+        //todo: assumes input not empty
+        $lines = explode("\r\n",$input_text);
+
+        #3.get list of sql commands
+        if(is_array($lines)){
+            for($i = 0;$i < count($lines);$i++){
+                $this->translateCommandStringToSQLForInsert(
+                    trim($lines[$i])
+                );
+
+            }
+        }
+        else{
+            return "";
+        }
+
+        return json_encode($lines);
+    }
+
+    private function translateCommandStringToSQLForInsert($command_string)
+    {
+        //#1. declare command list -- prepare sql insert statement
+        $sql = $this->getSQLBuilder();
+        if($command_string == ""){
+
+            $this->sql_command_list->add(
+                $this->getSQLBuilder()->
+                set(Db::fields()->content_type()->toStringValue("br"))
+            );
+        }
+        else{
+            $parts_after_split_at_double_symbol = preg_split("/(@@)/",$command_string,-1,PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE);
+            if(is_array($parts_after_split_at_double_symbol)){
+                //print json_encode($parts_after_split_at_double_symbol);exit;
+
+                foreach ($parts_after_split_at_double_symbol as $string){
+                    if($string == "@@"){
+                        new CommandToAddSQLForInsertAtSymbol($this,null,null);
+                    }
+                    else{
+                        $this->process_command_tokens($string);
+                    }
+                }
+            }
+            
+        }
+        return $sql;
+    }
+
+    public function getSQLBuilder()
+    {
+        $sql = new SQLInsertQuery();
+        $sql->use_set_format();
+        $sql->insert_into(app::values()->extended_post_content());
+        $sql->set(Db::fields()->entity_id()->toSQLValue($this->entity_id));
+        $sql->set(Db::fields()->timestamp()->toInt(Db::computed_values()->current_timestamp()));
+        return $sql;
+    }
+
+    private function process_command_tokens($command_string)
+    {
+        $delimiter = "@";
+        $command_tokens = preg_split("/($delimiter)/",$command_string,-1,PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE); //explode($delimiter, $command_string);
+
+        //print json_encode($command_tokens);exit;
+
+        if (is_array($command_tokens)) {
+            //print json_encode($command_tokens);exit;
+            for($i = 0; $i < count($command_tokens);$i++){
+                //process token
+                $token = $command_tokens[$i];
+                $previous_token = @$command_tokens[$i -1];
+
+                if($token){
+                    $trimmed_token = trim($token);
+                    if($trimmed_token == $delimiter){
+                        continue;
+                    }
+                    else if($previous_token != $delimiter){
+                        $this->processCommandForOrdinaryText($token);
+                        continue;
+                    }
+
+                    switch ($trimmed_token){
+                        case app::content_type_id()->img():
+                            new CommandToAddSQLForInsertImage($this,$command_tokens, $i);
+                            $i+=2 + 2;
+                            break;
+                        case app::content_type_id()->video():
+                            new CommandToAddSQLForInsertYoutubeVideo($this,$command_tokens, $i);
+                            $i+=3 + 3;
+                            break;
+                        case app::content_type_id()->link():
+                            new CommandToAddSQLForInsertLink($this,$command_tokens, $i);
+                            $i+=2 + 2;
+                            break;
+                        case app::content_type_id()->space():
+                            new CommandToAddSQLForInsertSpace($this,$command_tokens, $i);
+                            break;
+                        case app::content_type_id()->tintscreen():
+                            new CommandToAddSQLForInsertTintScreen($this,$command_tokens, $i);
+                            $i+=1 + 1;
+                            break;
+                        case app::content_type_id()->subhead():
+                            new CommandToAddSQLForInsertSubhead($this,$command_tokens, $i);
+                            $i+=1 + 1;
+                            break;
+                        case app::content_type_id()->columnrule():
+                            new CommandToAddSQLForInsertColumnRule($this,$command_tokens, $i);
+                            $i+=1 + 1;
+                            break;
+                        case app::content_type_id()->quote():
+                            new CommandToAddSQLForInsertQuote($this,$command_tokens, $i);
+                            $i+=1 + 1;
+                            break;
+                        case app::content_type_id()->bold():
+                            new CommandToAddSQLForInsertBold($this,$command_tokens, $i);
+                            $i+=1 + 1;
+                            break;
+                        case app::content_type_id()->italics():
+                            new CommandToAddSQLForInsertItalics($this,$command_tokens, $i);
+                            $i+=1 + 1;
+                            break;
+
+                        //tags related to CAR REVIEWS
+                        #=============================
+                        case app::content_type_id()->rating():
+                            new CommandToAddSQLForInsertRating($this,$command_tokens, $i);
+                            $i+=3 + 3;
+                            break;
+
+                        default:
+                            $this->processCommandForOrdinaryText($token);
+                            break;
+                    }
+                    
+                }
+
+
+            }
+        }
+        else{
+            throw new Exception("unexpected input");
+        }
+    }
+
+
+    private function processCommandForOrdinaryText($token)
+    {
+        $this->sql_command_list->add(
+            $this->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue("span"))->
+            set(Db::fields()->content()->toStringValue($token))
+        );
+    }
+
+    private function sql_for_delete_current_post_content()
+    {
+        return (new SQLDeleteQuery())->
+        delete_from(app::values()->extended_post_content())->
+        where(Db::fields()->entity_id()->isEqualTo($this->entity_id));
+    }
+
+    private function sqlForUpdateExtendedPostContentForDraftPost($input_text)
+    {
+        return (new SQLUpdateQuery())->
+        update(app::values()->draft_posts())->
+        where(Db::fields()->entity_id()->isEqualTo($this->entity_id))->
+        set(Db::fields()->extended_post_content()->toStringValue($input_text));
+    }
+}
+
+abstract class CommandToAddSQLForInsertContentType{
+    /** @param \QueryForEditExtendedPostContent $sql_command_list */
+    abstract protected function execute($sql_command_list,$command_tokens, $i);
+    public function __construct($sql_command_list,$command_tokens, $i)
+    {
+        $this->execute($sql_command_list,$command_tokens, $i);
+    }
+    private $keywords = array(
+        'image'=>0,'link'=>0
+    );
+    protected function is_keyword($url)
+    {
+        return array_key_exists($url,$this->keywords);
+    }
+
+    //to be used by subclasses
+    protected function getParam1($command_tokens, $i)
+    {
+        return @$command_tokens[$i + 1];
+    }
+
+    protected function getParam2($command_tokens, $i)
+    {
+        return @$command_tokens[$i + 2];
+    }
+    protected function getParam3($command_tokens, $i)
+    {
+        return @$command_tokens[$i + 3];
+    }
+    protected function throwExceptionIfNot($condition, $message)
+    {
+        $this->throwExceptionIf(!$condition,$message);
+    }
+    protected function throwExceptionIf($condition, $message)
+    {
+        if($condition){
+            throw new Exception($message);
+        }
+    }
+    protected function validateMaxLengthOfValueForWidth($value, $message)
+    {
+        $this->throwExceptionIf(strlen($value) > Db::max_length()->width_in_tbl_for_extended_content(),$message);
+        return $value;
+    }
+
+    protected function validateRating($value, $message)
+    {        
+        $this->throwExceptionIfNot(
+            array_key_exists($value,array(
+                app::possible_ratings()->poor()=>0,
+                app::possible_ratings()->below_average()=>0,
+                app::possible_ratings()->average()=>0,
+                app::possible_ratings()->above_average()=>0,
+                app::possible_ratings()->excellent()=>0
+            )),$message
+        );
+        return $value;
+    }
+
+    protected function validateTitleLengthAgainstMaxTitleLength($value, $message)
+    {
+        $this->throwExceptionIf(strlen($value) > Db::max_length()->title(),$message);
+        return $value;
+    }
+}
+
+class CommandToAddSQLForInsertImage extends CommandToAddSQLForInsertContentType{
+
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $url = $this->getParam1($command_tokens,$i);
+        $alt = $this->getParam2($command_tokens,$i);
+
+        if ($this->is_keyword($url)) {
+            throw new Exception("expected url after the keyword @image, found @" . $url);
+        } else if ($this->is_keyword($alt)) {
+            throw new Exception("expected @alt after @url");
+        }
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->img()))->
+            set(Db::fields()->src()->toStringValue($url))->
+            set(Db::fields()->alt()->toStringValue($alt))
+        );
+   
+    }
+}
+
+class CommandToAddSQLForInsertYoutubeVideo extends CommandToAddSQLForInsertContentType{
+
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $video_id_or_url = $this->getParam1($command_tokens,$i);
+
+        $width = $this->validateMaxLengthOfValueForWidth(
+            $this->getParam2($command_tokens,$i),"value for width of video too long"
+        );
+        $height = $this->getParam3($command_tokens,$i);
+
+        if ($this->is_keyword($video_id_or_url)) {
+            throw new Exception("expected video id after the keyword @video, found @" . $video_id_or_url);
+        } 
+        else if ($this->is_keyword($width)) {
+            throw new Exception("expected width of video after video id");
+        }
+
+        else if ($this->is_keyword($height)) {
+            throw new Exception("expected height of video after width");
+        }
+
+        //validate things that might throw database error e.g. empty, type, length, sign
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->youtube_video()))->
+            set(Db::fields()->src()->toStringValue($video_id_or_url))->
+            set(Db::fields()->width()->toStringValue($width))->
+            set(Db::fields()->height()->toStringValue($height))
+        );
+
+    }
+}
+
+class CommandToAddSQLForInsertRating extends CommandToAddSQLForInsertContentType{
+
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $title = $this->validateTitleLengthAgainstMaxTitleLength(
+            $this->getParam1($command_tokens,$i),
+            sprintf(
+                "title should not be longer than %s characters",
+                Db::max_length()->title()
+            )
+
+        );
+        //======
+
+        $rating_or_perception = $this->validateRating(
+            $this->getParam2($command_tokens,$i),
+            sprintf(
+                "expected rating to be any of these values: %s but found %s",
+                app::possible_ratings()->as_ORList(), $this->getParam2($command_tokens,$i)
+            )
+
+        );
+        $justification = $this->getParam3($command_tokens,$i);
+
+        //validate things that might throw database error e.g. empty, type, length, sign
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->rating()))->
+            set(Db::fields()->title()->toStringValue($title))->
+            set(Db::fields()->rating()->toStringValue($rating_or_perception))->
+            set(Db::fields()->content()->toStringValue($justification))
+        );
+
+    }
+}
+
+class CommandToAddSQLForInsertLink extends CommandToAddSQLForInsertContentType{
+
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $url = $this->getParam1($command_tokens, $i);
+        $inner_text = $this->getParam2($command_tokens, $i);
+        if ($this->is_keyword($url)) {
+            throw new Exception("expected url after the keyword @link, found @" . $url);
+        } else if ($this->is_keyword($inner_text)) {
+            throw new Exception("expected @inner-text after @url");
+        }
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->link()))->
+            set(Db::fields()->href()->toStringValue($url))->
+            set(Db::fields()->content()->toStringValue($inner_text))
+        );
+    }
+
+}
+class CommandToAddSQLForInsertSubhead extends CommandToAddSQLForInsertContentType{
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $text = $this->getParam1($command_tokens, $i);
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->subhead()))->
+            set(Db::fields()->content()->toStringValue($text))
+        );
+    }
+}
+class CommandToAddSQLForInsertTintScreen extends CommandToAddSQLForInsertContentType{
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $text = $this->getParam1($command_tokens, $i);
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->tintscreen()))->
+            set(Db::fields()->content()->toStringValue($text))
+        );
+    }
+}
+class CommandToAddSQLForInsertColumnRule extends CommandToAddSQLForInsertContentType{
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $text = $this->getParam1($command_tokens, $i);
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->columnrule()))->
+            set(Db::fields()->content()->toStringValue($text))
+        );
+    }
+}
+class CommandToAddSQLForInsertQuote extends CommandToAddSQLForInsertContentType{
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $text = $this->getParam1($command_tokens, $i);
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->quote()))->
+            set(Db::fields()->content()->toStringValue($text))
+        );
+    }
+}
+class CommandToAddSQLForInsertBold extends CommandToAddSQLForInsertContentType{
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $text = $this->getParam1($command_tokens, $i);
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->bold()))->
+            set(Db::fields()->content()->toStringValue($text))
+        );
+    }
+}
+class CommandToAddSQLForInsertAtSymbol extends CommandToAddSQLForInsertContentType{
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        //$text = $this->getParam1($command_tokens, $i);
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->at_symbol()))->
+            set(Db::fields()->content()->toStringValue("@"))
+        );
+    }
+}
+class CommandToAddSQLForInsertItalics extends CommandToAddSQLForInsertContentType{
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $text = $this->getParam1($command_tokens, $i);
+
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->italics()))->
+            set(Db::fields()->content()->toStringValue($text))
+        );
+    }
+}
+
+class CommandToAddSQLForInsertSpace extends CommandToAddSQLForInsertContentType{
+
+    public function execute($sql_command_list,$command_tokens, $i)
+    {
+        $sql_command_list->add(
+            $sql_command_list->getSQLBuilder()->
+            set(Db::fields()->content_type()->toStringValue(app::content_type_id()->space()))->
+            set(Db::fields()->content()->toStringValue($command_tokens[$i]))
+        );
+    }
+}
