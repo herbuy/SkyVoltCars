@@ -1,0 +1,145 @@
+<?php
+
+abstract class ResultForQuery{
+    private $mysqli;
+    private $query;
+    private $donot_commit = false;
+    public function do_not_commit(){
+        $this->donot_commit = true;
+    }
+
+    protected function mysqli(){
+        return $this->mysqli;
+    }
+    protected function query_string(){
+
+        return $this->query;
+    }
+
+    /**
+     * @param $result
+     * @return bool
+     */
+    protected function is_mysqli_result($result)
+    {
+        return is_a($result, "mysqli_result");
+    }
+
+    public function __construct($query)
+    {
+        $this->query = $query."";
+        $this->mysqli = new mysqli();
+    }
+    public function __destruct()
+    {
+        if($this->mysqli->connect_error || $this->mysqli->error || $this->donot_commit){
+            $this->mysqli->rollback();
+        }
+        else{
+            $this->mysqli->commit();
+        }
+        $this->mysqli->close();
+    }
+
+    public function to_array(){
+        $this->log_query();
+
+        $this->connectToDatabase();
+        $this->beginTransaction();
+        $result = $this->getResult();
+        $result_array = $this->convertToArray($result);
+        return $result_array;
+    }
+
+    private function connectToDatabase()
+    {
+        $this->mysqli->connect("localhost","root","usbw","smartercash_db");
+        if ($this->mysqli->connect_error) {
+            throw new Exception($this->mysqli->connect_error);
+        }
+    }
+
+    private function beginTransaction()
+    {
+        $this->mysqli->autocommit(false);
+    }
+
+    abstract protected function getResult();
+    /** @param \mysqli_result $result */
+    abstract protected function convertToArray($result);
+
+    protected function throw_exception_if_mysqli_error()
+    {
+        if ($this->mysqli()->error) {
+            throw new Exception($this->mysqli()->error);
+        }
+    }
+
+    private function log_query()
+    {
+        $fp = fopen("queries.txt","a");
+        fwrite($fp, $this->query_string().chr(10).chr(13));
+        fclose($fp);
+    }
+
+}
+
+
+class ResultForSingleQueryOnSmartcashDb extends ResultForQuery{
+    protected function getResult()
+    {
+        $result = $this->mysqli()->query($this->query_string());
+        parent::throw_exception_if_mysqli_error();
+        return $result;
+    }
+    protected function convertToArray($result)
+    {
+        $array = array();
+        if($this->is_mysqli_result($result)){
+            $this->mysqli()->store_result();
+            parent::throw_exception_if_mysqli_error();
+            while ($assoc = $result->fetch_assoc()) {
+                $array[] = $assoc;
+            }
+            $result->free();
+        }
+        return $array;
+    }
+
+}
+
+class ResultForMultiQueryOnSmartcashDb extends ResultForQuery{
+
+    protected function getResult()
+    {
+        $result = $this->mysqli()->multi_query($this->query_string());
+        parent::throw_exception_if_mysqli_error();
+        return $result;
+    }
+
+    protected function convertToArray($result)
+    {
+        $array = array();
+        do{
+            $array[] = $this->turn_current_result_into_array();
+        }
+        while($this->mysqli()->more_results() && $this->mysqli()->next_result());
+        return $array;
+    }
+
+    private function turn_current_result_into_array()
+    {
+        $result2 = $this->mysqli()->store_result();
+        parent::throw_exception_if_mysqli_error();
+        $array = array();
+        if($this->is_mysqli_result($result2)){
+            while ($assoc = $result2->fetch_assoc()) {
+                $array[] = $assoc;
+            }
+            $result2->free();
+        }
+        return $array;
+    }
+}
+
+?>

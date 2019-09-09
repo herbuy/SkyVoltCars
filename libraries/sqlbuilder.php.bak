@@ -1,0 +1,2669 @@
+<?php
+//**** one of the reasons for using intefaces rather implementation is that:
+//a) we might need to build each part e.g not every select expression will be built the way you are building it
+//b) so we want to program to requirements i.e what kind needs to be passed as argument, etc, not how it is implemented.
+//c) some implementatation may: a) build from others b) proxy others c) adapt others d) switch implementors
+//e) augment the work of others [decorate them], f) etc
+
+interface ISQLValue{
+    /*public function inList($sql_value_list);
+    public function isEqualTo($sql_value);
+    public function addToNewValueList();*/
+    public function __toString();
+    public function as_($identifer);
+
+}
+abstract class SQLValueBase implements ISQLValue{
+    private $alias_identifier;
+    protected function set_alias_identifier($identifier){
+        SQLBuilderException::throwIfNot($this->isSQLIdentifier($identifier),"expects SQLIdentifier for alias");
+        $this->alias_identifier = $identifier;
+    }
+    /** @return SQLIdentifier */
+    protected function get_alias_identifier(){
+        return $this->alias_identifier;
+    }
+    protected function has_alias(){
+        return null != $this->alias_identifier;
+    }
+
+    abstract public function as_($identifer);
+    public static function isJoinedTable($table){
+        return is_a($table,"SQLJoinedTable");
+    }
+    protected function isSQLIdentifierValuePair($column_value_pair)
+    {
+        return is_a($column_value_pair,"SQLIdentifierValuePair");
+    }
+
+    /**
+     * @param $listOfColumnsToOrderBy
+     * @return bool
+     */
+    protected function isSQLListOfColumnsToOrderBy($listOfColumnsToOrderBy)
+    {
+        return is_a($listOfColumnsToOrderBy, "SQLListOfColumnsToOrderBy");
+    }
+
+    /**
+     * @param $sql_column_to_order_by
+     * @return bool
+     */
+    protected function isSQLColumnToOrderBy($sql_column_to_order_by)
+    {
+        return is_a($sql_column_to_order_by, "SQLColumnToOrderBy");
+    }
+    /**
+     * @param $sql_identifier
+     * @return bool
+     */
+    protected function isSQLIdentifier($sql_identifier)
+    {
+        return is_a($sql_identifier, "ISQLIdentifier");        
+    }
+
+
+    protected function isSQLEverything($identifier_or_everything)
+    {
+        return is_a($identifier_or_everything,"SQLEverything");
+    }
+
+    /**
+     * @param $test
+     * @return bool
+     */
+    protected function isATest($test)
+    {
+        return self::isTest($test);
+    }
+    public static function isTest($test){
+        return is_a($test, "ISQLTest");
+    }
+    
+    
+    protected function isTableIdentifier($table){
+        return is_a($table,"SQLTableIdentifier");
+    }
+    protected function isTable($table){
+        return is_a($table,"ISQLTable");
+    }
+    
+    /**
+     * @param $tableList
+     * @return bool
+     */
+    protected function isTableList($tableList)
+    {
+        return is_a($tableList, "SQLTableList");
+    }
+    /**
+     * @param $sql_value_or_value_list
+     * @return bool
+     */
+    protected function isSQLValueList($sql_value_or_value_list)
+    {
+        return is_a($sql_value_or_value_list, "SQLValueList");
+    }
+    protected function isSelectStatement($sql_value){
+        return is_a($sql_value, "SQLSelectExpression");
+    }
+    protected function isInsertStatement($sql_value){
+        return is_a($sql_value, "SQLInsertQuery");
+    }
+    protected function isUpdateQuery($sql_value){
+        return is_a($sql_value, "SQLUpdateQuery");
+    }
+    protected function isDeleteQuery($sql_value){
+        return is_a($sql_value, "SQLDeleteQuery");
+    }
+
+    /**
+     * @param $sql_value_or_value_list
+     * @return bool
+     */
+    protected function isSQLValue($sql_value_or_value_list)
+    {
+        return is_a($sql_value_or_value_list, "ISQLValue");
+    }
+
+    protected function treatAsSubQueryIfSelectQuery($sql_value){
+        if($this->isSelectStatement($sql_value)){
+            $sql_value->treatAsSubExpression();
+        }
+    }
+    public function isEqualTo($sql_value2){
+        $this->treatAsSubQueryIfSelectQuery($this);
+        $this->treatAsSubQueryIfSelectQuery($sql_value2);
+        return new SQLEqualityTest(
+            $this,
+            $sql_value2
+        );
+    }
+    public function isTrue()
+    {
+        return $this->isEqualTo(new SQLTrue());
+    }
+    public function isFalse()
+    {
+        return $this->isEqualTo(new SQLFalse());
+    }
+    public function isEqualToZero()
+    {
+        return $this->isEqualTo(new SQLInt(0));
+    }
+    public function isGreaterThanZero()
+    {
+        return $this->isGreaterThanInt(0);
+    }
+    
+    public function isNull()
+    {
+        return new SQLIsNullTest($this);
+    }
+    public function isNotNull()
+    {
+        return new SQLIsNotNullTest($this);
+    }
+    
+
+    public function isNotEqualTo($sql_value2){
+        $this->treatAsSubQueryIfSelectQuery($this);
+        $this->treatAsSubQueryIfSelectQuery($sql_value2);
+        return new SQLNotEqualTest(
+            $this,
+            $sql_value2
+        );
+    }
+    
+    public function isGreaterThan($sql_value2){
+        $this->treatAsSubQueryIfSelectQuery($this);
+        $this->treatAsSubQueryIfSelectQuery($sql_value2);
+        return new SQLGreaterThanTest(
+            $this,
+            $sql_value2
+        );
+    }
+    public function isGreaterOrEqualTo($sql_value2){
+        $this->treatAsSubQueryIfSelectQuery($this);
+        $this->treatAsSubQueryIfSelectQuery($sql_value2);
+        return new SQLGreaterOrEqualTest(
+            $this,
+            $sql_value2
+        );
+    }
+    public function isLessThan($sql_value2){
+        $this->treatAsSubQueryIfSelectQuery($this);
+        $this->treatAsSubQueryIfSelectQuery($sql_value2);
+        return new SQLLessThanTest(
+            $this,
+            $sql_value2
+        );
+    }
+
+    public function isLike($sql_value2){
+        $this->treatAsSubQueryIfSelectQuery($this);
+        $this->treatAsSubQueryIfSelectQuery($sql_value2);
+        return new SQLLikeTest(
+            $this,
+            $sql_value2
+        );
+    }
+    public function isBetween($sql_value_min,$sql_value_max){
+        $this->treatAsSubQueryIfSelectQuery($this);
+        $this->treatAsSubQueryIfSelectQuery($sql_value_min);
+        $this->treatAsSubQueryIfSelectQuery($sql_value_max);
+        return new SQLBetweenTest(
+            $this,
+            $sql_value_min,
+            $sql_value_max
+        );
+    }
+    //====== EXTENSION COMPARISONS ==============
+    
+    public function isEqualToInt($int){
+        return $this->isEqualTo(new SQLInt($int));
+    }
+    public function isNotEqualToInt($int){
+        return $this->isNotEqualTo(new SQLInt($int));
+    }
+    
+    public function isEqualToString($string){
+        return $this->isEqualTo(new SQLString($string));
+    }
+
+    public function isGreaterThanInt($int){
+        return $this->isGreaterThan(new SQLInt($int));
+    }
+    public function isGreaterOrEqualToInt($int){
+        return $this->isGreaterOrEqualTo(new SQLInt($int));
+    }
+    public function isLessThanInt($int){
+        return $this->isLessThan(new SQLInt($int));
+    }
+    public function isLessOrEqualToInt($int){
+        return $this->isLessOrEqualTo(new SQLInt($int));
+    }
+
+    
+    //======== end of extension comparisons
+    public function inList($sql_value_list){
+        $in_list_test = new SQLInListTest();
+        $in_list_test->setValueToTest($this);
+        $in_list_test->setPossibleMatches($sql_value_list);
+        return $in_list_test;
+    }
+    public function addToNewValueList(){
+        $sql_value_list = new SQLValueList();
+        $sql_value_list->add($this);
+        return $sql_value_list;
+    }
+
+    public function isLessOrEqualTo($sql_value2){
+        $this->treatAsSubQueryIfSelectQuery($this);
+        $this->treatAsSubQueryIfSelectQuery($sql_value2);
+        return new SQLLessOrEqualTest(
+            $this,
+            $sql_value2
+        );
+    }
+    public function isLikeString($string){
+        return $this->isLike(new SQLString($string));
+    }
+    public function isBetweenInt($int_min, $int_max){
+        return $this->isBetween(new SQLInt($int_min), new SQLInt($int_max));
+    }
+    
+    //=========== arithmetic
+    public function plus($sql_value2){        
+        return new SQLAdditionExpression(
+            $this,
+            $sql_value2
+        );
+    }
+    public function minus($sql_value2){
+        return new SQLSubtractionExpression(
+            $this,
+            $sql_value2
+        );
+    }
+    public function multiply_by($sql_value2){
+        return new SQLMultiplicationExpression(
+            $this,
+            $sql_value2
+        );
+    }
+    /** @return SQLDivisionExpression */
+    public function divide_by($sql_value2){
+        return new SQLDivisionExpression(
+            $this,
+            $sql_value2
+        );
+    }
+    public function modulo($sql_value2){
+        return new SQLModulusExpression(
+            $this,
+            $sql_value2
+        );
+    }
+    
+    public function plus_int($number){
+        return $this->plus(new SQLInt($number));
+    }
+    public function minus_int($number){
+        $this->minus(new SQLInt($number));
+        return $this;
+    }
+    public function multiply_by_int($number){
+        return $this->multiply_by(new SQLInt($number));
+    }
+    public function divide_by_int($number){
+        return $this->divide_by(new SQLInt($number));
+    }
+    public function modulo_int($number){
+        return $this->modulo(new SQLInt($number));
+    }
+}
+
+abstract class SQLValue{
+    /**
+     * @param $value
+     * @return bool
+     */
+    public static function isValid($value)
+    {
+        return is_a($value, "ISQLValue");
+    }
+
+    public static function isATest($var){
+        return is_a($var,"ISQLTest");
+    }
+
+    public static function throwExceptionIfNotValid($value){
+        self::throwExceptionIf(!self::isValid($value),sprintf("invalid value %s",$value));
+    }
+    public static function throwExceptionIf($booleanValue,$message){
+        if($booleanValue){
+            throw new SQLBuilderException($message);
+        }
+    }
+    public static function throwExceptionIfNot($booleanValue,$message){
+        self::throwExceptionIf(!$booleanValue,$message);
+    }
+}
+
+abstract class QuottedValue extends SQLValueBase{
+
+    private $value;
+    private $quote = "";
+
+    protected function getValue(){
+        return $this->value;
+    }
+
+    public function __construct($string, $quote)
+    {
+        $string = utf8_encode($string);
+        $this->value = addslashes($string);
+        $this->quote = $quote;
+    }
+
+    public function __toString()
+    {
+        $result = join(array($this->quote,$this->value,$this->quote));
+        if($this->has_alias()){
+            $result = sprintf("%s AS %s",$result, $this->get_alias_identifier());
+        }
+        return $result;
+    }
+
+}
+
+interface ISQLString extends ISQLValue{
+    
+}
+class SQLString extends QuottedValue implements ISQLString{
+    public function __construct($string)
+    {
+        parent::__construct("".$string,"'");
+    }
+    /** return SQLString */
+    public function as_($identifier)
+    {
+        $sql_value = new SQLString($this->getValue());
+        $sql_value->set_alias_identifier($identifier);
+        return $sql_value;
+    }
+}
+interface ISQLInt{
+
+}
+class SQLNull extends SQLValueBase{
+    public function as_($identifer)
+    {
+        $this->set_alias_identifier($identifer);
+        return $this;
+    }
+    public function __toString()
+    {
+        $alias_string = $this->has_alias() ? sprintf(" AS %s",$this->get_alias_identifier()):"";
+        return sprintf("NULL%s",$alias_string);
+    }
+}
+class SQLInt extends QuottedValue implements ISQLInt{
+    public function __construct($number)
+    {
+        SQLValue::throwExceptionIfNot(is_numeric($number),"expects an integer");
+        parent::__construct(trim($number),"");
+    }
+
+    public function and_($sql_test){
+        return SQLUtils::and_($this,$sql_test);
+    }
+    /** return SQLInt */
+    public function as_($identifier)
+    {
+        $sql_value = new SQLInt($this->getValue());
+        $sql_value->set_alias_identifier($identifier);
+        return $sql_value;
+    }
+    
+    
+}
+class SQLTrue extends SQLInt{
+    public function __construct()
+    {
+        parent::__construct(1);
+    }
+}
+class SQLFalse extends SQLInt{
+    public function __construct()
+    {
+        parent::__construct(0);
+    }
+}
+
+class SQLUtils{
+    
+    /** @param \SQLListOfColumnsToOrderBy $listOfColumnsToOrderBy
+     *@return SQLListOfColumnsToOrderBy 
+     */    
+    public static function then_by($listOfColumnsToOrderBy,$columnToOrderBy){
+        $listOfColumnsToOrderBy->add($columnToOrderBy);
+        return $listOfColumnsToOrderBy;
+    }
+    
+    public static function isEqualTo($sql_value1,$sql_value2){
+        return new SQLEqualityTest(
+            $sql_value1,
+            $sql_value2
+        );
+    }
+
+    public static function isGreaterThan($sql_value1,$sql_value2){
+        return new SQLGreaterThanTest(
+            $sql_value1,
+            $sql_value2
+        );
+    }
+    public static function isGreaterOrEqualTo($sql_value1,$sql_value2){
+        return new SQLGreaterOrEqualTest(
+            $sql_value1,
+            $sql_value2
+        );
+    }
+    public static function isLessThan($sql_value1,$sql_value2){
+        return new SQLLessThanTest(
+            $sql_value1,
+            $sql_value2
+        );
+    }
+    public static function inList($sql_value,$sql_value_list){
+        $in_list_test = new SQLInListTest();
+        $in_list_test->setValueToTest($sql_value);
+        $in_list_test->setPossibleMatches($sql_value_list);
+        return $in_list_test;
+    }
+    public static function addToNewValueList($sql_value){
+        $sql_value_list = new SQLValueList();
+        $sql_value_list->add($sql_value);
+        return $sql_value_list;
+    }
+    
+    public static function isLessOrEqualTo($sql_value1,$sql_value2){
+        return new SQLLessOrEqualTest(
+            $sql_value1,
+            $sql_value2
+        );
+    }
+
+    public static function and_($sql_test, $sql_test2){
+        $all_true_test = new SQLAllTrueTest();
+        $all_true_test->add($sql_test);
+        $all_true_test->add($sql_test2);
+        return $all_true_test;
+    }
+    public static function or_($sql_test, $sql_test2){
+        $any_true_test = new SQLAnyTrueTest();
+        $any_true_test->add($sql_test);
+        $any_true_test->add($sql_test2);
+        return $any_true_test;
+    }
+
+    public static function and_not($sql_test, $sql_test2){
+        $all_true_test = new SQLAndNotTest();
+        $all_true_test->add($sql_test);
+        $all_true_test->add($sql_test2);
+        return $all_true_test;
+    }
+
+    
+
+}
+
+interface ISQLIdentifier extends ISQLValue{
+    
+}
+class SQLIdentifier extends QuottedValue implements ISQLIdentifier{
+    private $table_name;
+    protected $table_identifier;
+    /** return SQLIdentifier */
+    public function as_($identifier)
+    {
+        $sql_value = new SQLIdentifier($this->getValue(),$this->table_name);
+        $sql_value->set_alias_identifier($identifier);
+        return $sql_value;
+    }
+    public function __construct($string,$table_name=null)
+    {
+        if(trim($string) == ""){
+            throw new SQLBuilderException("empty value for identifier");
+        }        
+        parent::__construct($string,"`");
+        
+        $table_name = trim($table_name);
+        if($table_name){
+            $this->table_name = $table_name;
+            $this->table_identifier = new SQLTableIdentifier($this->table_name);
+        }
+    }
+    public function toInt($int){
+        return $this->toSQLValue(new SQLInt($int));
+    }
+    public function toStringValue($string){
+        return $this->toSQLValue(new SQLString($string));
+    }
+    public function toSQLValue($sql_value)
+    {
+        SQLBuilderException::throwIfNot($this->isSQLValue($sql_value),"expects a SQLValue");
+        return new SQLIdentifierValuePair($this,$sql_value);
+    }
+
+    /** @return SQLColumnToOrderBy */
+    public function ascending()
+    {
+        return  new SQLColumnToOrderBy($this);
+    }
+
+    /** @return SQLColumnToOrderBy */
+    public function descending()
+    {
+        $column = new SQLColumnToOrderBy($this);
+        $column->shouldBeDescending();
+        return $column;
+    }
+    public function __toString()
+    {
+        return $this->table_identifier ? join(".",array($this->table_identifier,parent::__toString())): parent::__toString();
+    }
+    
+    //extendsions
+    public function sum(){
+        return new SQLSUMFunction($this);
+    }
+    public function max(){
+        return new SQLMaxFunction($this);
+    }
+    public function min(){
+        return new SQLMinFunction($this);
+    }
+    public function count(){
+        return new SQLCountFunction($this);
+    }
+    public function average(){
+        return new SQLAverageFunction($this);
+    }    
+    
+}
+class SQLIdentifierWithTableName extends SQLIdentifier{
+
+    public function __construct($string,$table_name)
+    {
+        parent::__construct($string,$table_name);        
+    }
+}
+
+class SQLColumnToOrderBy extends SQLValueBase{
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    private $order = " ASC";
+    private $identifier;
+    public function __construct($sql_identifier)
+    {
+        SQLBuilderException::throwIfNot($this->isSQLIdentifier($sql_identifier),"expects a SQLIdentifier for an order by Column");
+        $this->identifier = $sql_identifier;
+    }
+    public function shouldBeDescending(){
+        $this->order = " DESC";
+    }
+    public function __toString()
+    {
+        return $this->identifier.$this->order;
+    }
+
+    /** @return SQLListOfColumnsToOrderBy */
+    public function then_by($columnToOrderBy)
+    {
+        $list = SQLUtils::then_by(new SQLListOfColumnsToOrderBy(), $this);
+        $list = SQLUtils::then_by($list, $columnToOrderBy);
+        return $list;
+    }
+    
+}
+
+class SQLBuilderException extends Exception{
+    public static function throwIf($condition, $message_as_string){
+        if(!$condition){
+            return;
+        }
+        throw new SQLBuilderException($message_as_string);
+    }
+    public static function throwIfNot($condition, $message_as_string){
+        self::throwIf(!$condition,$message_as_string);
+    }
+    
+}
+
+interface SQLList{
+    public function add($item);
+    public function isEmpty();
+}
+
+interface ISQLValueList extends SQLList{
+    
+}
+
+abstract class SQLListBase extends SQLValueBase implements SQLList{
+    private $identifier_array = array();
+    protected $delimiter = ",";
+
+    public function isEmpty(){
+        return count($this->identifier_array) < 1;
+    }
+
+    private $position = 0;
+    public function reset(){
+        $this->position = 0;
+    }
+    public function hasNext(){
+        return $this->position < count($this->identifier_array);
+    }
+    public function getNext(){
+        if(!$this->hasNext()){
+            throw new SQLBuilderException("end of sql value list");
+        }
+        $next = $this->identifier_array[$this->position];
+        $this->position++;
+        return $next;
+    }
+
+    /** @param /ISQLIdentifier $identifier */
+    public function add($item){
+        if(!is_a($item, $this->getItemClass())){
+            throw new SQLBuilderException("expected ".$this->getItemClass());
+        }
+        $this->identifier_array[] = $item;
+        return $this;
+    }
+    public function __toString()
+    {
+        return join($this->getListItemDelimiter(),$this->identifier_array);
+    }
+    
+    abstract  protected function getItemClass();
+
+    /**
+     * @return string
+     */
+    protected function getListItemDelimiter()
+    {
+        return $this->delimiter;
+    }
+
+
+}
+
+abstract class SQLValueListBase extends SQLListBase implements ISQLValueList{
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    /**
+     * @return string
+     */
+    protected function getItemClass()
+    {
+        return "ISQLValue";
+    }
+}
+
+interface ISQLIdentifierList{
+
+}
+
+abstract class SQLIdentifierListBase extends SQLValueListBase implements ISQLIdentifierList{
+    /**
+     * @return string
+     */
+    protected function getItemClass()
+    {
+        return "ISQLIdentifier";
+    }
+}
+class SQLListOfColumnsToOrderBy extends SQLValueListBase{
+    /**
+     * @return string
+     */
+    protected function getItemClass()
+    {
+        return "SQLColumnToOrderBy";
+    }    
+    public function then_by($columnToOrderBy){
+        return SQLUtils::then_by($this,$columnToOrderBy);
+    }
+}
+
+class SQLIdentifierList extends SQLIdentifierListBase{
+}
+
+class SQLIdentifierListInParentheses extends SQLIdentifierListBase{
+    public function __toString()
+    {
+        return "(". parent::__toString() .")";
+    }
+}
+
+
+class SQLValueList extends SQLValueListBase{
+
+}
+class SQLValueListInParentheses extends SQLValueListBase{
+    public function __toString()
+    {
+        return "(". parent::__toString() . ")";
+    }
+}
+
+interface ISQLIdentifierValuePair extends ISQLValue{
+    public function getIdentifier();
+    public function getValue();
+}
+class SQLIdentifierValuePair extends SQLValueBase implements ISQLIdentifierValuePair{
+
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    private $identifier;
+    private $value;
+    
+    public function getIdentifier(){
+        return $this->identifier;
+    }
+    public function getValue(){
+        return $this->value;
+    }
+    
+    public function __construct($identifier,$value)
+    {
+        if(!is_a($identifier,"ISQLIdentifier")){
+            throw new SQLBuilderException("expected a SQLIdentifier");
+        }
+        if(!SQLValue::isValid($value)){
+            throw new SQLBuilderException("expected a SQLValue");
+        }
+        $this->identifier = $identifier;
+        $this->value = $value;
+    }
+
+    public function __toString()
+    {
+        return join("=",array($this->identifier,$this->value));
+    }
+
+}
+class SQLIdentifierValuePairList extends SQLValueListBase{
+    public function add($item)
+    {
+        SQLValue::throwExceptionIfNot(is_a($item,"ISQLIdentifierValuePair"),"expected ISQLIdentifierValuePair");
+        parent::add($item); 
+    }
+
+
+}
+
+interface ISQLCommand{
+    public function __toString();
+}
+
+class SQLInsertQuery extends SQLValueBase implements ISQLCommand{
+    public function as_($identifier)
+    {
+        return $this;
+    }
+
+    public function inList($sql_value_list)
+    {
+        return SQLUtils::inList($this,$sql_value_list)->enclosed_in_parentheses();
+    }
+    public function addToNewValueList(){
+        return SQLUtils::addToNewValueList($this);
+    }
+    private $column_list;
+    private $value_list;
+    private $tableIdentifier;
+
+    public function __construct()
+    {
+        $this->resetColumnsAndValues();
+    }
+    private function resetColumnsAndValues(){
+        $this->column_list = new SQLIdentifierListInParentheses();
+        $this->value_list = new SQLValueListInParentheses();
+    }
+    public function setTableName($tableName){
+        $this->tableIdentifier = new SQLIdentifier($tableName);
+    }
+    /** @param /ISQLIdentifierValuePair $columnValuePair */
+    public function addColumnValuePair($columnValuePair){
+        SQLValue::throwExceptionIfNot(is_a($columnValuePair,"ISQLIdentifierValuePair"),"expected column value pair");
+        $identifier = $columnValuePair->getIdentifier();
+        $value = $columnValuePair->getValue();
+        if($this->isSelectStatement($value)){
+            $value->treatAsSubExpression();
+        }
+        
+        $this->column_list->add($identifier);
+        $this->value_list->add($value);
+    }
+    /** @param SQLIdentifierValuePairList $columnValuePairList */
+    public function setColumnValuePairList($columnValuePairList){
+        SQLValue::throwExceptionIfNot(is_a($columnValuePairList,"SQLIdentifierValuePairList"),"expected a SQLIdentifierValuePairList");
+        $this->resetColumnsAndValues();
+        while($columnValuePairList->hasNext()){
+            $this->addColumnValuePair($columnValuePairList->getNext());
+        }
+    }
+
+    private function detectAndLogBugs(){
+        try{
+            if(!$this->tableIdentifier){
+                throw new Exception("table not specified");
+            }
+        }
+        catch(Exception $ex){
+            file_put_contents("exceptions.from_sql_insert", sprintf("%s in %s on line %s \n\n%s",$ex->getMessage(),$ex->getFile(),$ex->getLine(),$ex->getTraceAsString()));
+        }
+        
+    }
+
+    public function __toString()
+    {
+        $this->detectAndLogBugs();
+        return sprintf("INSERT INTO %s %s VALUES %s",$this->tableIdentifier,$this->column_list,$this->value_list);
+    }
+
+    /** @return SQLInsertQuery */
+    public function insert_into($table_identifier)
+    {
+        SQLBuilderException::throwIfNot($this->isTableIdentifier($table_identifier),"expects a SQLTableIdentifier for insert into clause");
+        $this->tableIdentifier = $table_identifier;
+        return $this;
+    }
+
+    /** @return SQLInsertQuery */
+    public function set($sql_column_value_pair)
+    {
+        $this->addColumnValuePair($sql_column_value_pair);
+        return $this;
+    }
+}
+
+
+//==================== NOW WE NEED THE WHERE CLOSE FOR OTHER SQL STATEMENTS LIKE DELETE, UPDATE, SELECT
+
+interface ISQLTest extends ISQLValue{
+    public function and_($sql_test);    
+    public function and_not($sql_test);
+    public function or_($sql_test);
+}
+
+class SQLIsNotNullTest extends SQLValueBase implements ISQLTest{
+    private $sql_value;
+    protected $not_keyword = " NOT";
+    public function __construct($sql_value)
+    {
+        SQLBuilderException::throwIfNot($this->isSQLValue($sql_value),"expected a SQL value to test IS NOT NULL");
+        $this->treatAsSubQueryIfSelectQuery($sql_value);
+        $this->sql_value = $sql_value;        
+    }
+
+    public function as_($identifer)
+    {        
+    }
+    public function __toString()
+    {
+        return sprintf("%s IS%s NULL",$this->sql_value,$this->not_keyword);
+    }
+    public function and_($sql_test)
+    {
+        return SQLUtils::and_($this,$sql_test);
+    }
+    public function and_not($sql_test)
+    {
+        return SQLUtils::and_not($this,$sql_test);
+    }
+    public function or_($sql_test){
+        return SQLUtils::or_($this,$sql_test);
+    }
+
+}
+class SQLIsNullTest extends SQLIsNotNullTest{
+    public function __construct($sql_value)
+    {
+        parent::__construct($sql_value);
+        $this->not_keyword = "";
+    }
+}
+
+abstract class SQLArithmeticOrComparisonExpression extends SQLValueBase implements ISQLTest{
+
+    public function and_($sql_test){
+        return SQLUtils::and_($this,$sql_test);
+    }
+    public function or_($sql_test){
+        return SQLUtils::or_($this,$sql_test);
+    }
+    public function and_not($sql_test)
+    {
+        return SQLUtils::and_not($this,$sql_test);
+    }
+
+    private $sqlvalue1;
+    private $sqlvalue2;
+    public function firstValue(){
+        return $this->sqlvalue1;
+    }
+    public function secondValue(){
+        return $this->sqlvalue2;
+    }
+    abstract protected function getOperator();
+
+    public function __construct($sqlvalue1,$sqlvalue2)
+    {
+        if(!SQLValue::isValid($sqlvalue1) || !SQLValue::isValid($sqlvalue2)){
+            throw new SQLBuilderException("invalid argument in constuctor");
+        }
+
+        $this->prepare_values($sqlvalue1, $sqlvalue2);
+        $this->sqlvalue1 = $sqlvalue1;
+        $this->sqlvalue2 = $sqlvalue2;
+    }
+    public function __toString()
+    {
+        return join($this->getOperator(),array($this->sqlvalue1,$this->sqlvalue2));
+    }
+
+    /**
+     * @param $sqlvalue1
+     * @param $sqlvalue2
+     */
+    private function prepare_values($sqlvalue1, $sqlvalue2)
+    {
+        $this->treatAsSubQueryIfSelectQuery($sqlvalue1);
+        $this->treatAsSubQueryIfSelectQuery($sqlvalue2);
+    }
+
+}
+
+abstract class ComparisonTest extends SQLArithmeticOrComparisonExpression{
+    public function as_($identifier)
+    {
+        return $this;
+    }
+}
+
+abstract class SQLArithmeticExpression extends SQLArithmeticOrComparisonExpression{
+    public function as_($identifier)
+    {
+        $this->set_alias_identifier($identifier);
+        return $this;
+    }
+    public function __toString()
+    {
+        $result = $this->should_enclose ? sprintf("(%s)",parent::__toString()): parent::__toString();
+        $result = $this->has_alias() ? $result ." AS ".$this->get_alias_identifier() : $result;
+        return $result;
+    }
+    private $should_enclose = false;
+    public function enclose(){
+        $this->should_enclose = true;
+        return $this;    }
+}
+
+class SQLLikeTest extends ComparisonTest{
+    protected function getOperator()
+    {
+        return " LIKE ";
+    }
+}
+
+class SQLBetweenTest extends ComparisonTest{
+    protected function getOperator()
+    {
+        return " BETWEEN ";
+    }
+    private $sqlvalue3;
+    public function __construct($sqlvalue1, $sqlvalue2,$sqlvalue3)
+    {
+        SQLBuilderException::throwIfNot($this->isSQLValue($sqlvalue3),"expected a SQLValue for the 3rd parameter");
+        parent::__construct($sqlvalue1, $sqlvalue2);
+        $this->sqlvalue3 = $sqlvalue3;
+    }
+    public function __toString()
+    {
+        return parent::__toString() . " AND ".$this->sqlvalue3;
+    }
+}
+
+class SQLEqualityTest extends ComparisonTest{
+    protected function getOperator()
+    {
+        return "=";
+    }
+}
+class SQLNotEqualTest extends ComparisonTest{
+    protected function getOperator()
+    {
+        return "<>";
+    }
+}
+
+class SQLGreaterThanTest extends ComparisonTest{
+    protected function getOperator()
+    {
+        return ">";
+    }
+}
+class SQLGreaterOrEqualTest extends ComparisonTest{
+    protected function getOperator()
+    {
+        return ">=";
+    }
+}
+class SQLLessThanTest extends ComparisonTest{
+    protected function getOperator()
+    {
+        return "<";
+    }
+}
+class SQLLessOrEqualTest extends ComparisonTest{
+    protected function getOperator()
+    {
+        return "<";
+    }
+}
+
+class SQLAdditionExpression extends SQLArithmeticExpression{
+    protected function getOperator()
+    {
+        return "+";
+    }
+}
+class SQLSubtractionExpression extends SQLArithmeticExpression{
+    protected function getOperator()
+    {
+        return "-";
+    }
+}
+class SQLMultiplicationExpression extends SQLArithmeticExpression{
+    protected function getOperator()
+    {
+        return "*";
+    }
+}
+class SQLDivisionExpression extends SQLArithmeticExpression{
+    protected function getOperator()
+    {
+        return "/";
+    }
+}
+class SQLModulusExpression extends SQLArithmeticExpression{
+    protected function getOperator()
+    {
+        return "%";
+    }
+}
+
+class SQLInListTest extends SQLValueBase implements ISQLTest{
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    public function inList($sql_value_list)
+    {
+        return SQLUtils::inList($this,$sql_value_list)->enclosed_in_parentheses();
+    }
+    public function addToNewValueList(){
+        return SQLUtils::addToNewValueList($this);
+    }
+    
+    public function and_($sql_test){
+        return SQLUtils::and_($this,$sql_test);
+    }
+
+    public function and_not($sql_test)
+    {
+        return SQLUtils::and_not($this,$sql_test);
+    }
+    public function or_($sql_test){
+        return SQLUtils::or_($this,$sql_test);
+    }
+
+    private $sql_value;
+    private $sql_value_list;
+    public function __construct()
+    {
+        $this->sql_value_list = new SQLValueList();
+    }
+
+    public function setValueToTest($sqlValue)
+    {
+        SQLValue::throwExceptionIfNotValid($sqlValue);
+        $this->sql_value = $sqlValue;
+    }
+    public function addPossibleMatch($sqlValue)
+    {
+        SQLValue::throwExceptionIfNotValid($sqlValue);
+        $this->sql_value_list->add($sqlValue);
+    }
+    public function setPossibleMatches($sql_value_list)
+    {
+        //SQLValue::throwExceptionIfNot($this->isSQLValueList($sql_value_list) || $this->isSelectStatement($sql_value_list),"expects a SQLValueList or select expression for possible matches");
+        if(!$this->isSQLValueList($sql_value_list)){
+            $this->sql_value_list = new SQLValueList();
+            $this->sql_value_list->add($sql_value_list);
+        }
+        else{
+            $this->sql_value_list = $sql_value_list;
+        }
+
+    }
+    public function __toString()
+    {
+        $result = join(" IN ",array($this->sql_value,"(".$this->sql_value_list.")"));
+        if($this->enclose){
+            $result = "($result)";
+        }
+        return $result;
+    }
+    private $enclose = false;
+    public function enclosed_in_parentheses(){
+        $this->enclose = true;
+        return $this;
+    }
+}
+
+abstract class SQLTestList extends SQLValueList{
+    public function  add($value)
+    {
+        SQLValue::throwExceptionIfNot(SQLValue::isATest($value), sprintf("invalid test %s",$value));
+        parent::add($value);
+    }
+}
+class SQLAllTrueTest extends SQLTestList implements ISQLTest{
+    public function and_($sql_test){
+        return SQLUtils::and_($this,$sql_test);
+    }
+
+    public function and_not($sql_test)
+    {
+        return SQLUtils::and_not($this,$sql_test);
+    }
+    public function or_($sql_test){
+        return SQLUtils::or_($this,$sql_test);
+    }
+
+    public function __construct()
+    {
+        $this->delimiter = " AND ";
+    }
+}
+
+class SQLAndNotTest extends SQLTestList implements ISQLTest{
+    public function and_($sql_test){
+        return SQLUtils::and_($this,$sql_test);
+    }
+    public function and_not($sql_test)
+    {
+        return SQLUtils::and_not($this,$sql_test);
+    }
+    public function or_($sql_test){
+        return SQLUtils::or_($this,$sql_test);
+    }
+
+    public function __construct()
+    {
+        $this->delimiter = " AND NOT ";
+    }
+}
+
+class SQLAnyTrueTest extends SQLTestList implements ISQLTest{
+    public function and_($sql_test){
+        return SQLUtils::and_($this,$sql_test);
+    }
+    public function or_($sql_test){
+        return SQLUtils::or_($this,$sql_test);
+    }
+
+    public function __construct()
+    {
+        $this->delimiter = " OR ";
+    }
+    public function and_not($sql_test)
+    {
+        return SQLUtils::and_not($this,$sql_test);
+    }
+
+    public function __toString()
+    {
+        return "(". parent::__toString().")";
+    }
+
+}
+
+class SQLUpdateQuery extends SQLValueBase implements ISQLCommand{
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    public function inList($sql_value_list)
+    {
+        return SQLUtils::inList($this,$sql_value_list)->enclosed_in_parentheses();
+    }
+    public function addToNewValueList(){
+        return SQLUtils::addToNewValueList($this);
+    }
+    
+    private $table;
+    private $columnValuePairList;
+    private $where_condition;
+    
+    public function __construct()
+    {
+        $this->columnValuePairList = new SQLIdentifierValuePairList();
+    }
+    public function setTable($string){
+        SQLValue::throwExceptionIfNot(is_string($string),"expected a string");
+        $this->table = new SQLIdentifier($string);
+    }
+    public function setColumnValue($columnValuePair){
+        SQLValue::throwExceptionIfNot(is_a($columnValuePair,"ISQLIdentifierValuePair"), "expected ISQLIdentifierValuePair");
+        $this->columnValuePairList->add($columnValuePair);        
+    }
+    public function setTest($test){
+        SQLValue::throwExceptionIfNot(is_a($test,"ISQLTest"),"expected a SQLTest");
+        $this->where_condition = $test;
+    }
+
+    public function __toString()
+    {
+        return sprintf("UPDATE %s SET %s%s",$this->table,$this->columnValuePairList,$this->getWhereClause());
+    }
+
+    private function getWhereClause()
+    {
+        return $this->where_condition ? " WHERE ".$this->where_condition : "";
+    }
+
+    /** @return SQLUpdateQuery */
+    public function update($table_identifier)
+    {
+        if(is_string($table_identifier)){
+            $table_identifier = new SQLTableIdentifier($table_identifier);
+        }
+        SQLBuilderException::throwIfNot($this->isTableIdentifier($table_identifier),"expects a SQLTableIdentifier for update");
+        $this->table = $table_identifier;
+        return $this;
+    }
+
+    /**
+     *@param \SQLIdentifierValuePair $column_value_pair
+     * @return SQLUpdateQuery */
+    public function set($column_value_pair)
+    {
+        SQLBuilderException::throwIfNot($this->isSQLIdentifierValuePair($column_value_pair),"expects a SQLIdentifierValuePair");
+        $this->treatAsSubQueryIfSelectQuery($column_value_pair->getValue());
+        $this->setColumnValue($column_value_pair);
+        return $this;
+    }
+
+    /** @return SQLUpdateQuery */
+    public function where($test)
+    {
+        $this->setTest($test);
+        return $this;
+    }
+
+
+}
+
+class SQLDeleteQuery extends SQLValueBase implements ISQLCommand{
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    public function inList($sql_value_list)
+    {
+        return SQLUtils::inList($this,$sql_value_list)->enclosed_in_parentheses();
+    }
+    public function addToNewValueList(){
+        return SQLUtils::addToNewValueList($this);
+    }
+    private $table;    
+    private $where_condition;
+
+    public function setTable($string){
+        SQLValue::throwExceptionIfNot(is_string($string),"expected a string");
+        $this->table = new SQLIdentifier($string);
+    }
+    
+    public function setTest($test){
+        SQLValue::throwExceptionIfNot(is_a($test,"ISQLTest"),"expected a SQLTest");
+        $this->where_condition = $test;
+    }
+
+    public function __toString()
+    {
+        return sprintf("DELETE FROM %s%s",$this->table,$this->getWhereClause());
+    }
+
+    private function getWhereClause()
+    {
+        return $this->where_condition ? " WHERE ".$this->where_condition : "";
+    }
+
+    /** @return SQLDeleteQuery */
+    public function delete_from($table_identifier)
+    {
+        SQLBuilderException::throwIfNot($this->isTableIdentifier($table_identifier),"expects a SQLTableIdentifier for delte from");
+        $this->table = $table_identifier;
+        return $this;
+    }
+
+    /** @return SQLDeleteQuery */
+    public function where($test)
+    {
+        $this->setTest($test);
+        return $this;
+    }
+
+}
+
+//================= tested upto to here =====
+
+//================== now, we need concept of 'table' to handle select statements
+//we shall need a list of tables
+interface ISQLTable extends ISQLValue{
+
+}
+class SQLTableIdentifier extends SQLIdentifier implements ISQLTable{
+    public function __construct($string)
+    {
+        parent::__construct($string);
+    }
+
+    /** @param \SQLIdentifier $identifier */
+    public function columnIdentifier($identifier){
+        return new SQLIdentifierWithTableName($identifier->getValue(),$this->getValue());
+    }
+    
+    /** return SQLTableIdentifier */
+    public function as_($identifier)
+    {
+        $sql_value = new SQLTableIdentifier($this->getValue());
+        $sql_value->set_alias_identifier($identifier);
+        return $sql_value;
+    }
+
+    /** @return SQLLeftJoinedTable */
+    public function left_join($table)
+    {
+        $joined_table = new SQLLeftJoinedTable();
+        return $this->setUpJoinedTable($joined_table,$table);        
+    }
+    /** @return SQLRightJoinedTable */
+    public function right_join($table)
+    {
+        $joined_table = new SQLRightJoinedTable();
+        return $this->setUpJoinedTable($joined_table,$table);
+    }
+    /** @return SQLInnerJoinedTable */
+    public function inner_join($table)
+    {
+        $joined_table = new SQLInnerJoinedTable();
+        return $this->setUpJoinedTable($joined_table,$table);
+    }    
+
+    /**
+     * @param \SQLJoinedTable $joined_table
+     * @param \ISQLTable $table   
+     * @return SQLJoinedTable 
+     */
+    private function setUpJoinedTable($joined_table,$table)
+    {
+        $joined_table->setTable1($this);
+        $joined_table->setTable2($table);
+        return $joined_table;
+    }
+}
+abstract class SQLJoinedTable extends SQLValueBase implements ISQLTable{
+    protected $table1;
+    protected $table2;
+    protected $column1;
+    protected $column2;
+
+    /**
+     * @param $identifier
+     * @param $new_joined_table
+     */
+    protected function setUPClonedTable($identifier, $new_joined_table)
+    {
+        $new_joined_table->setTable1($this->table1);
+        $new_joined_table->setTable2($this->table2);
+        $new_joined_table->setColumn1($this->column1);
+        $new_joined_table->setColumn2($this->column2);
+        $new_joined_table->set_alias_identifier($identifier);
+    }
+
+
+    
+    /** @return SQLJoinedTable */
+    public function left_join($table){
+        return $this->setUpResultTable(new SQLLeftJoinedTable(),$table);
+    }
+
+    /** @return SQLJoinedTable */
+    public function right_join($table){
+        return $this->setUpResultTable(new SQLRightJoinedTable(),$table);
+    }
+
+    /** @return SQLJoinedTable */
+    public function inner_join($table){
+        return $this->setUpResultTable(new SQLInnerJoinedTable(),$table);
+    }
+
+    /** @param \SQLJoinedTable $result_table */
+    private function setUpResultTable($result_table, $table_to_join_with){
+        SQLBuilderException::throwIfNot($this->isTable($table_to_join_with),"expected table for join operation");
+        $result_table->setTable1($this);
+        $result_table->setTable2($table_to_join_with);
+        return $result_table;
+    }
+    /** @param \SQLEqualityTest $sql_equality_test */
+    public function on($sql_equality_test){        
+        SQLBuilderException::throwIfNot($this->isATest($sql_equality_test),"expected a SQLEqualityTest for the ON clause");
+        $this->setColumn1($sql_equality_test->firstValue());
+        $this->setColumn2($sql_equality_test->secondValue());
+        return $this;
+    }
+    
+    public function setTable1($table1){
+        SQLBuilderException::throwIfNot($this->isTable($table1),"table1 for join expression expected to be ISQLTable");
+        $this->table1 = $table1;
+    }
+    public function setTable2($table2){
+        SQLBuilderException::throwIfNot($this->isTable($table2),"table2 for join expression expected to be ISQLTable");
+        $this->table2 = $table2;
+    }
+    public function setColumn1($column1){
+        SQLBuilderException::throwIfNot($this->isSQLIdentifier($column1),"column1 for join expression expected to be SQLIdentifier");
+        $this->column1 = $column1;
+    }
+    public function setColumn2($column2){
+        SQLBuilderException::throwIfNot($this->isSQLIdentifier($column2),"column2 for join expression expected to be SQLIdentifier");
+        $this->column2 = $column2;
+    }
+
+    public function __toString()
+    {
+        $table1 = $this->isTableIdentifier($this->table1)? $this->table1."" : "($this->table1)";
+        $table2 = $this->isTableIdentifier($this->table2)? $this->table2."" : "($this->table2)";
+
+        $result = sprintf("%s ". $this->getJoinVerb() ." JOIN %s ON %s = %s",$table1,$table2,$this->column1,$this->column2);
+        if($this->has_alias()){
+            //$result = sprintf("(%s) AS %s",$result, $this->get_alias_identifier());
+        }
+        return $result;
+    }
+
+    /**
+     * @return string
+     */
+    abstract protected function getJoinVerb();
+
+
+}
+class SQLInnerJoinedTable extends SQLJoinedTable{
+    /** return SQLInnerJoinedTable */
+    public function as_($identifier)
+    {
+        $joinedTable = new SQLInnerJoinedTable();
+        $this->setUPClonedTable($identifier, $joinedTable);
+        return $joinedTable;
+    }
+    protected function getJoinVerb()
+    {
+        return "INNER";
+    }
+
+
+}
+class SQLLeftJoinedTable extends SQLJoinedTable{
+    /** return SQLLeftJoinedTable */
+    public function as_($identifier)
+    {
+        $joinedTable = new SQLLeftJoinedTable();
+        $this->setUPClonedTable($identifier, $joinedTable);
+        return $joinedTable;
+    }
+    protected function getJoinVerb()
+    {
+        return "LEFT";
+    }
+}
+
+class SQLRightJoinedTable extends SQLJoinedTable{
+    /** return SQLRightJoinedTable */
+    public function as_($identifier)
+    {
+        $joinedTable = new SQLRightJoinedTable();
+        $this->setUPClonedTable($identifier, $joinedTable);
+        return $joinedTable;
+    }
+    protected function getJoinVerb()
+    {
+        return "RIGHT";
+    }
+}
+class SQLTableList extends SQLValueListBase{
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    public function add($item)
+    {
+        if(is_string($item)){
+            $item = new SQLTableIdentifier($item);
+        }
+        SQLValue::throwExceptionIfNot($this->isTable($item),"expects a valid table or table name");
+        parent::add($item); 
+    }
+}
+
+class SQLMultiQuery extends SQLListBase{
+    
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    
+    protected function getItemClass()
+    {
+        return "ISQLCommand";
+    }
+    protected function getListItemDelimiter()
+    {
+        return ";";
+    }
+}
+
+interface ISQLSelectExpression extends ISQLValue{
+
+}
+class SQLSelectExpression extends SQLValueBase implements ISQLSelectExpression, ISQLTable,ISQLCommand
+{
+    private $valuesToSelected;
+    private $tableListToSelectFrom;
+    private $testToUseAsFilter;
+    /** @var  SQLListOfColumnsToOrderBy */
+    private $columnsToOrderBy;
+    private $identifier_to_group_by;
+    //==============================
+    public function as_($identifier)
+    {
+        $this->set_alias_identifier($identifier);
+        return $this;
+    }
+    public function set_alias_identifier($identifier){
+        parent::set_alias_identifier($identifier);
+    }
+    public function inList($sql_value_list)
+    {
+        return SQLUtils::inList($this, $sql_value_list)->enclosed_in_parentheses();
+    }
+
+    public function addToNewValueList()
+    {
+        return SQLUtils::addToNewValueList($this);
+    }
+    
+
+    public function __construct()
+    {
+        $this->clearValueList();
+        $this->clearTableList();
+        $this->clearOrderByColumns();
+    }
+
+    public function addTable($table)
+    {
+        SQLBuilderException::throwIfNot($this->isTable($table), "expected ISQLTable");
+        $this->tableListToSelectFrom->add($table);
+    }
+
+    public function setTableList($tableList)
+    {
+        SQLValue::throwExceptionIfNot($this->isTableList($tableList), "expects a table list");
+        $this->tableListToSelectFrom = $tableList;
+    }
+
+    public function selectValue($sqlValue)
+    {
+        SQLBuilderException::throwIfNot($this->isSQLValue($sqlValue), "expects a SQLValue");
+        $this->valuesToSelected->add($sqlValue);
+    }
+
+    public function setTest($test)
+    {
+        SQLValue::throwExceptionIfNot($this->isATest($test), "expects a test for the select statement");
+        $this->testToUseAsFilter = $test;
+    }
+
+    public function setValueListToSelect($valueList)
+    {
+        SQLValue::throwExceptionIfNot($this->isSQLValueList($valueList), "expects a value list");
+        $this->valuesToSelected = $valueList;
+    }
+
+    private $distinct_keyword = "";
+    public function __toString()
+    {
+        $result = sprintf("SELECT%s %s%s",$this->distinct_keyword, $this->getSelectedValues(), $this->getOtherQueryParts());
+        return $this->wrap($result);
+    }
+    
+
+    /**
+     * @return string
+     */
+    protected function getSelectedValues()
+    {
+        return $this->valuesToSelected->isEmpty() ? "*" : $this->valuesToSelected->__toString();
+    }
+
+    private function getOtherQueryParts()
+    {
+
+
+        if ($this->tableListToSelectFrom->isEmpty()) {
+            return "";
+        }
+
+        $final_string = sprintf(" FROM %s", $this->tableListToSelectFrom->__toString());
+        if ($this->testToUseAsFilter) {
+            $final_string = sprintf("%s WHERE %s", $final_string, $this->testToUseAsFilter . "");
+        }
+
+        if (!$this->columnsToOrderBy->isEmpty()) {
+            $final_string = sprintf("%s ORDER BY %s", $final_string, $this->columnsToOrderBy->__toString());
+        }
+
+        if ($this->identifier_to_group_by) {
+            $final_string = sprintf("%s GROUP BY %s", $final_string, $this->identifier_to_group_by);
+        }
+
+        if($this->limit){
+            $final_string = sprintf("%s LIMIT %s",$final_string,$this->limit);
+        }
+        return $final_string;
+    }
+
+    private $treat_as_subexpression = false;
+
+    public function treatAsSubExpression()
+    {
+        $this->treat_as_subexpression = true;
+    }
+
+    private function wrap($result)
+    {
+        $final_string = $this->treat_as_subexpression ? sprintf("(%s)", $result) : $result;
+        if($this->has_alias()){
+            $final_string = sprintf("(%s) AS %s",$final_string,$this->get_alias_identifier());
+        }
+        return $final_string;
+    }
+
+    /**
+     * @return SQLSelectExpression */
+    public function select($sql_value_or_value_list)
+    {
+        SQLBuilderException::throwIfNot($this->isSQLValue($sql_value_or_value_list), "expected a SQLValue or SQLValueList");
+        if ($this->isSQLValueList($sql_value_or_value_list)) {
+            $this->setValueListToSelect($sql_value_or_value_list);
+        } else {
+            $this->selectValue($sql_value_or_value_list);
+        }
+        return $this;
+    }
+
+    public function select_distinct(){
+        $this->distinct_keyword = " DISTINCT";
+        return $this;
+    }
+    
+    public function select_everything(){
+        $this->select(new SQLEverything());
+        return $this;
+    }
+    public function select_if($test,$on_true_sql_value,$on_false_sql_value,$alias_identifier = null){
+        $select_if_function = new SQLIFFunction($test,$on_true_sql_value,$on_false_sql_value); 
+        if($alias_identifier){
+            $select_if_function->as_($alias_identifier);
+        }
+        $this->select($select_if_function);
+        return $this;
+    }
+    private function select_count($sql_identifier,$as_identifier = null){
+        $sql_count = new SQLCountFunction($sql_identifier,$as_identifier);        
+        $this->select($sql_count);
+        return $this;
+    }
+    public function select_count_everything($as_identifier = null){
+        $this->select_count(new SQLEverything(),$as_identifier);
+        return $this;
+    }
+    
+    /** @return SQLSelectExpression */
+    public function from($identifier_or_joined_table_select_expression)
+    {
+        //preprocessing: if a string, we convert to a table name
+        if(is_string($identifier_or_joined_table_select_expression)){
+            $identifier_or_joined_table_select_expression = new SQLTableIdentifier($identifier_or_joined_table_select_expression);
+        }
+        
+        if ($this->isTableList($identifier_or_joined_table_select_expression)) {
+            $this->setTableList($identifier_or_joined_table_select_expression);
+        } else if ($this->isTable($identifier_or_joined_table_select_expression)) {
+            $this->clearTableList();
+            $this->addTable($identifier_or_joined_table_select_expression);
+        } else {
+            throw new SQLBuilderException("expected a SQLTableIdentifier or SQLTableList");
+        }
+        return $this;
+    }
+
+    /** @return SQLSelectExpression */
+    public function where($test)
+    {
+        $this->setTest($test);
+        return $this;
+    }
+
+    private function clearValueList()
+    {
+        $this->valuesToSelected = new SQLValueList();
+    }
+
+    private function clearTableList()
+    {
+        $this->tableListToSelectFrom = new SQLTableList();
+    }
+
+    /** @return SQLSelectExpression */
+    public function order_by($sql_column_or_list_to_order_by)
+    {
+        if ($this->isSQLColumnToOrderBy($sql_column_or_list_to_order_by)) {
+            $this->clearOrderByColumns();
+            $this->columnsToOrderBy->add($sql_column_or_list_to_order_by);
+        } else if ($this->isSQLListOfColumnsToOrderBy($sql_column_or_list_to_order_by)) {
+            $this->columnsToOrderBy = $sql_column_or_list_to_order_by;
+        } else {
+            throw new SQLBuilderException("expects a SQLColumnToOrderBy or SQLListOfColumnsToOrderBy");
+        }
+        return $this;
+    }
+
+    /**
+     * @return SQLListOfColumnsToOrderBy
+     */
+    private function clearOrderByColumns()
+    {
+        return $this->columnsToOrderBy = new SQLListOfColumnsToOrderBy();
+    }
+
+    /** @return SQLSelectExpression */
+    public function group_by($sql_identifier)
+    {
+        SQLBuilderException::throwIfNot($this->isSQLIdentifier($sql_identifier), "expects a SQLIdentifier for the group by clause");
+        $this->identifier_to_group_by = $sql_identifier;
+        return $this;
+    }
+
+    private $limit;
+    public function limit($start_index, $number_of_results)
+    {
+        $this->limit = new SQLLimit($start_index,$number_of_results);
+        return $this;
+    }
+}
+
+class SQLLimit{
+    private $start_index;
+    private $number_of_results;
+    public function __construct($start_index, $number_of_results)
+    {
+        $this->start_index = new SQLInt($start_index);
+        $this->number_of_results = new SQLInt($number_of_results);
+    }
+    public function __toString()
+    {
+        return $this->start_index.",".$this->number_of_results;
+    }
+
+}
+class SQLEverything implements ISQLValue{
+    public function __toString()
+    {
+        return "*";
+    }
+    public function as_($identifer)
+    {
+        return $this;
+    }
+}
+
+abstract class SQLFunction extends SQLValueBase{
+    public function __construct($sql_alias_identifier = null)
+    {
+        if($sql_alias_identifier){
+            $this->as_($sql_alias_identifier);
+        }
+    }
+
+    public function as_($identifer)
+    {
+        $this->set_alias_identifier($identifer);
+        return $this;
+    }
+
+    public static function concat($sql_value_list)
+    {
+        return new SQLConcatFunction($sql_value_list);
+    }
+
+    public function __toString()
+    {
+        return sprintf("%s(%s)%s",$this->getFunctionKeyWord(),$this->getFunctionContent(),$this->getAliasString());
+    }
+    abstract protected function getFunctionKeyWord();
+    abstract protected function getFunctionContent();
+
+    private function getAliasString()
+    {
+        return $this->has_alias() ? " AS ".$this->get_alias_identifier():"";
+    }
+    
+    public static function IfTrueThat($test, $on_true_sql_value, $on_false_sql_value){
+        return new SQLIFFunction($test,$on_true_sql_value,$on_false_sql_value);
+    }
+
+}
+class SQLIFFunction extends SQLFunction{
+    private $test,$on_true_sql_value,$on_false_sql_value;
+    public function __construct($test, $on_true_sql_value, $on_false_sql_value, $sql_alias_identifier=null)
+    {        
+        $this->validate($test, $on_true_sql_value, $on_false_sql_value);
+        $this->prepare_values($on_true_sql_value, $on_false_sql_value);
+        $this->setValues($test, $on_true_sql_value, $on_false_sql_value);
+        parent::__construct($sql_alias_identifier);        
+    }
+    protected function getFunctionKeyWord()
+    {
+        return "IF";
+    }
+    protected function getFunctionContent()
+    {
+        return join(",",array($this->test,$this->on_true_sql_value,$this->on_false_sql_value));
+    }
+
+    /**
+     * @param $test
+     * @param $on_true_sql_value
+     * @param $on_false_sql_value
+     */
+    private function validate($test, $on_true_sql_value, $on_false_sql_value)
+    {
+        SQLBuilderException::throwIfNot($this->isTest($test), "expects a SQLTest for the 1st parameter of the IF function");
+        SQLBuilderException::throwIfNot($this->isSQLValue($on_true_sql_value), "expects a SQLValue for the 2nd parameter of the IF function");
+        SQLBuilderException::throwIfNot($this->isSQLValue($on_false_sql_value), "expects a SQLValue for the 3rd parameter of the IF function");
+    }
+
+    /**
+     * @param $on_true_sql_value
+     * @param $on_false_sql_value
+     */
+    private function prepare_values($on_true_sql_value, $on_false_sql_value)
+    {
+        $this->treatAsSubQueryIfSelectQuery($on_true_sql_value);
+        $this->treatAsSubQueryIfSelectQuery($on_false_sql_value);
+    }
+
+    /**
+     * @param $test
+     * @param $on_true_sql_value
+     * @param $on_false_sql_value
+     */
+    private function setValues($test, $on_true_sql_value, $on_false_sql_value)
+    {
+        $this->test = $test;
+        $this->on_true_sql_value = $on_true_sql_value;
+        $this->on_false_sql_value = $on_false_sql_value;
+    }
+}
+
+class SQLConcatFunction extends SQLFunction{
+    private $sql_value_list;
+    public function __construct($sql_value_list,$sql_alias_identifier = null)
+    {
+        $this->sql_value_list = new SQLValueList();
+        if($this->isSQLValueList($sql_value_list)){
+            $this->sql_value_list = $sql_value_list;
+        }
+        parent::__construct($sql_alias_identifier);
+    }
+
+    protected function getFunctionKeyWord()
+    {
+        return "CONCAT";
+    }
+    protected function getFunctionContent()
+    {
+        return $this->sql_value_list;
+    }
+    public function add($sql_value){
+        $this->sql_value_list->add($sql_value);
+        return $this;
+    }    
+}
+
+
+abstract class SQLAggregateFunction extends SQLFunction{
+    private $identifier;
+    private $distinct_keyword = "";
+    
+    public function __construct($sql_identifier,$sql_alias_identifier=null)
+    {        
+        SQLBuilderException::throwIfNot($this->getTest($sql_identifier), $this->getExceptionMessage());
+        $this->identifier = $sql_identifier;
+        parent::__construct($sql_alias_identifier);
+    }    
+    protected function getFunctionContent()
+    {
+        return sprintf("%s%s",$this->distinct_keyword,$this->identifier);
+    }
+    public function distinct(){
+        $this->distinct_keyword = "DISTINCT ";
+        return $this;
+    }
+
+    /**
+     * @param $sql_identifier
+     * @return bool
+     */
+    protected function getTest($sql_identifier)
+    {
+        return $this->isSQLIdentifier($sql_identifier);
+    }
+
+    /**
+     * @return string
+     */
+    protected function getExceptionMessage()
+    {
+        return "expects column identifier for " . get_class($this);
+    }
+}
+
+class SQLCountFunction extends SQLAggregateFunction{
+
+    protected function getFunctionKeyWord()
+    {
+        return "COUNT";
+    }
+
+    protected function getTest($sql_identifier)
+    {
+        return parent::getTest($sql_identifier) || is_a($sql_identifier, "SQLEverything");
+    }
+
+    protected function getExceptionMessage()
+    {
+        return "expects column identifier or * for " . get_class($this);
+    }
+}
+
+class SQLMaxFunction extends SQLAggregateFunction{    
+    
+    protected function getFunctionKeyWord()
+    {
+        return "MAX";
+    }    
+}
+class SQLMinFunction extends SQLAggregateFunction{    
+    protected function getFunctionKeyWord()
+    {
+        return "MIN";
+    }    
+}
+class SQLSUMFunction extends SQLAggregateFunction{
+    protected function getFunctionKeyWord()
+    {
+        return "SUM";
+    }
+}
+class SQLAverageFunction extends SQLAggregateFunction{
+    protected function getFunctionKeyWord()
+    {
+        return "AVG";
+    }
+}
+
+################################################################# DATA DEFINITION LANGUAGE
+class SQLCommandList extends SQLListBase{
+    public function __construct()
+    {
+        $this->delimiter = ";".SQLNewLineChar::get();
+    }
+
+    public function as_($identifier)
+    {
+        return $this;
+    }
+
+    public function start_transaction()
+    {
+        $this->add(new SQLStartTransaction());
+        return $this;
+    }
+
+    public function set_timezone($string)
+    {
+        $this->add(new SQLTimezone($string));
+        return $this;
+    }
+
+    public function create_database($string)
+    {
+        $this->add(new SQLCreateDatabase($string));
+        return $this;
+    }
+
+    public function use_database($string)
+    {        
+        $this->add(new SQLUseDatabase($string));
+        return $this;
+    }
+
+    public function commit()
+    {
+        $this->add(new SQLCommit());
+        return $this;
+    }
+
+    protected function getItemClass()
+    {
+        return "ISQLCommand";
+    }
+
+
+    public function set_sql_mode_to_no_auto_value_on_zero()
+    {
+        $this->add(new DDLSQLMode_NoAutoValueOnZero());
+        return $this;
+    }
+
+    public function set_auto_commit_to_zero()
+    {
+        $this->add(new SQLAutoCommitZero());
+        return $this;
+    }
+
+}
+
+abstract class DDLCommand implements ISQLCommand{
+    abstract public function __toString();
+
+}
+class DDLSQLMode_NoAutoValueOnZero extends DDLCommand{
+    public function __toString(){
+        return "SET SQL_MODE = ". new SQLString("NO_AUTO_VALUE_ON_ZERO");
+    }
+}
+
+class SQLStartTransaction extends DDLCommand{
+    public function __toString(){
+        return "START TRANSACTION";
+    }
+}
+class SQLCommit extends DDLCommand{
+    public function __toString(){
+        return "COMMIT";
+    }
+}
+abstract class SQLAutoCommit extends DDLCommand{
+    private $int;
+    public function __construct($int)
+    {
+        $this->int = new SQLInt($int);
+    }
+
+    public function __toString(){
+        return "SET AUTOCOMMIT = ".$this->int;
+    }
+}
+class SQLAutoCommitZero extends SQLAutoCommit{
+    public function __construct()
+    {
+        parent::__construct(0);
+    }
+}
+
+class SQLTimezone implements ISQLCommand{
+    private $value;
+    public function __construct($string)
+    {
+        $this->value = new SQLString($string);
+    }
+
+    public function __toString(){
+        return "SET time_zone = ".$this->value;
+    }
+}
+
+class SQLCreate{
+    public static function database($name){
+        return new SQLCreateDatabase($name);
+    }
+    public static function table($name){
+        return new SQLCreateTableName($name);
+    }
+    public static function table_if_not_exists($name){
+        return new SQLCreateTableIfNotExists($name);
+    }
+    public static function column($name){
+        return new SQLColumnDeclaration($name);
+    }
+
+    public static function primary_key(){
+        return new SQLPrimaryKey();
+    }
+    public static function unique_key($name){
+        return new SQLUniqueKey($name);
+    }
+    public static function key($name){
+        return new SQLKey($name);
+    }
+}
+class SQLColumn{
+    public static function name($name){
+        return new SQLColumnDeclaration($name);
+    } 
+}
+class SQLCreateDatabase implements ISQLCommand{
+    private $value, $if_not_exists = "", $def_char_set = "utf8",$collate = "utf8_general_ci";
+    public function __construct($name)
+    {
+        $this->value = new SQLIdentifier($name);
+    }
+    public function if_not_exists(){
+        $this->if_not_exists = " IF NOT EXISTS ";
+        return $this;
+    } 
+
+    public function __toString(){
+        return sprintf("CREATE DATABASE%s%s  DEFAULT CHARACTER SET %s COLLATE %s", $this->if_not_exists,$this->value,$this->def_char_set,$this->collate);
+    }
+}
+class SQLUseDatabase implements ISQLCommand{
+    private $value;
+    public function __construct($name)
+    {
+        $this->value = new SQLIdentifier($name);
+    }
+    
+    public function __toString(){
+        return sprintf("USE %s",$this->value);
+    }
+}
+
+class SQLDelimiterCommand implements ISQLCommand{
+    private $value;
+    public function __construct($name)
+    {
+        $this->value = $name;
+    }
+
+    public function __toString(){
+        return sprintf("DELIMITER %s",$this->value);
+    }
+}
+
+abstract class SQLDropTable implements ISQLCommand{
+    private $value, $if_exists = "";
+    protected function only_if_exists(){
+        $this->if_exists = " IF EXISTS";
+    }
+    public function __construct($name)
+    {
+        $this->value = new SQLIdentifier($name);
+    }
+
+    public function __toString(){
+        return sprintf("DROP TABLE%s %s",$this->if_exists,$this->value);
+    }
+    
+    //=========
+    public static function name($name){
+        return new SQLDropTableName($name);
+    }
+    public static function if_exists($name){
+        return new SQLDropTableIfExists($name);
+    }
+}
+
+class SQLDropTableName  extends SQLDropTable{
+    
+}
+
+class SQLDropTableIfExists  extends SQLDropTable{
+    public function __construct($name)
+    {
+        parent::__construct($name);
+        $this->only_if_exists();
+    }
+}
+
+#create table
+abstract class SQLCreateTable implements ISQLCommand{
+    private $value, $if_not_exists = "";
+    private $engine_name;
+    private $default_charset;
+    private $comment;
+
+    private $list_of_col_declarations;
+    private $keys = array();
+
+    /** @return SQLCreateTable */
+    public function set_comment($string)
+    {
+        $this->comment = new SQLString($string);
+        return $this;
+    }
+
+    /** @return SQLCreateTable */
+    public function addColumn($col_declaration)
+    {
+        $this->list_of_col_declarations->add($col_declaration);
+        return $this;
+    }
+
+    protected function only_if_not_exists(){
+        $this->if_not_exists = " IF NOT EXISTS";
+    }
+    public function __construct($name)
+    {
+        $this->value = new SQLIdentifier($name);
+        $this->set_engine_to_inno_db();
+        $this->set_default_charset_to_utf8();
+        $this->set_comment("");
+        
+        $this->list_of_col_declarations = new SQLColumnDeclarationList();
+    }
+
+    public function __toString(){
+        return sprintf("CREATE TABLE%s %s (".SQLNewLineChar::get()."%s%s".SQLNewLineChar::get().") Engine=%s DEFAULT CHARSET=%s COMMENT=%s",$this->if_not_exists,$this->value,$this->getColumnsAsString(),$this->keys_string(),$this->engine_name,$this->default_charset,$this->comment);
+    }
+
+    //=========
+    public static function name($name){
+        return new SQLCreateTableName($name);
+    }
+    public static function if_not_exists($name){
+        return new SQLCreateTableIfNotExists($name);
+    }
+    //===================
+    /** @return SQLCreateTable */
+    public function set_engine_to_inno_db(){
+        $this->engine_name = SQLValueFor::InnoDb();
+        return $this;
+    }
+    /** @return SQLCreateTable */
+    public function set_engine_to_my_isam(){
+        $this->engine_name = SQLValueFor::MyISAM();
+        return $this;
+    }
+    /** @return SQLCreateTable */
+    public function set_default_charset_to_utf8(){
+        $this->default_charset = SQLValueFor::utf8();
+        return $this;
+    }
+
+    private function getColumnsAsString()
+    {
+        return $this->list_of_col_declarations->__toString();
+    }
+
+
+    /** @return SQLCreateTable */
+    public function add_primary_key($sql_primary_key){
+        if(!is_a($sql_primary_key, "SQLPrimaryKey")){
+            throw new Exception("expected primary key data struture");
+        }
+        $this->keys[] = $sql_primary_key;
+        return $this;
+    }
+    public function add_unique_key($sql_unique_key){
+        if(!is_a($sql_unique_key, "SQLUniqueKey")){
+            throw new Exception("expected unique key data struture");
+        }
+        $this->keys[] = $sql_unique_key;
+        return $this;
+    }
+    public function add_key($sql__key){
+        if(!is_a($sql__key, "SQLKey")){
+            throw new Exception("expected key data struture");
+        }
+        $this->keys[] = $sql__key;
+        return $this;
+    }
+    
+    private function keys_string()
+    {
+        $keys_string = count($this->keys) > 0 ? join(",".SQLNewLineChar::get(),$this->keys): "";
+        $keys_string = $this->list_of_col_declarations->isEmpty() ? $keys_string : ", ".SQLNewLineChar::get().$keys_string;
+        return $keys_string;
+    }
+
+}
+class SQLNewLineChar{
+    public static function get(){
+        return chr(10).chr(13);
+    }
+}
+class SQLCreateTableName  extends SQLCreateTable{
+
+}
+
+class SQLCreateTableIfNotExists  extends SQLCreateTable{
+    public function __construct($name)
+    {
+        parent::__construct($name);
+        $this->only_if_not_exists();
+    }
+}
+
+class SQLValueFor{
+    public static function InnoDb(){
+        return "InnoDb";
+    }
+    public static function MyISAM(){
+        return "MyISAM";
+    }
+
+    public static function utf8(){
+        return "utf8";
+    }
+    
+}
+
+class SQLColumnDeclarationList extends SQLListBase implements ISQLValueList{
+    public function __construct()
+    {
+        $this->delimiter = ",".SQLNewLineChar::get();
+    }
+
+    public function as_($identifier)
+    {
+        return $this;
+    }
+    /**
+     * @return string
+     */
+    protected function getItemClass()
+    {
+        return "SQLColumnDeclaration";
+    }
+}
+class SQLColumnDeclaration implements ParameterForAlterTableAdd{
+    private $name_of_column;
+    
+    private $enum = '';
+    
+    private $type='';
+    private $length='';
+    private $unsigned = '';
+    private $zero_fill='';
+    private $not_null='';
+    private $auto_increment='';
+    
+    private $default_value='';
+    private $comment='';
+    
+    public function __construct($name_of_column)
+    {
+        $this->name_of_column = new SQLIdentifier($name_of_column);
+    }
+    public function __toString()
+    {
+        return sprintf("%s %s%s%s%s%s%s%s%s%s",$this->name_of_column,$this->enum,$this->type,$this->length,$this->unsigned,$this->zero_fill,$this->not_null,$this->default_value,$this->auto_increment,$this->comment);
+    }
+    private function set_type_and_length($type,$length=null){
+        $this->type = $type;
+        $this->length = is_numeric($length)? "($length)": "";
+        return $this;
+    }
+
+    /** @return SQLColumnDeclaration */
+    public function unsigned(){
+        $this->unsigned = " unsigned";
+        return $this;
+    }
+    /** @return SQLColumnDeclaration */
+    public function zero_fill(){
+        $this->zero_fill = " ZEROFILL";
+        return $this;
+    }
+    /** @return SQLColumnDeclaration */
+    public function not_null(){
+        $this->not_null = " NOT NULL";
+        return $this;
+    }
+    /** @return SQLColumnDeclaration */
+    public function auto_increment(){
+        $this->auto_increment = " AUTO_INCREMENT";
+        return $this;
+    }
+
+    /** @return SQLColumnDeclaration */
+    public function default_value($value){
+        $this->default_value = " DEFAULT ". new SQLString($value);
+        return $this;
+    }
+
+    /** @return SQLColumnDeclaration */
+    public function int($length = null)
+    {
+        return $this->set_type_and_length("int",$length);
+    }
+    /** @return SQLColumnDeclaration */
+    public function tinyint($length = null)
+    {
+        return $this->set_type_and_length("tinyint",$length);
+    }
+    /** @return SQLColumnDeclaration */
+    public function smallint($length = null)
+    {
+        return $this->set_type_and_length("smallint",$length);
+    }
+    /** @return SQLColumnDeclaration */
+    public function mediumint($length = null)
+    {
+        return $this->set_type_and_length("mediumint",$length);
+    }
+    /** @return SQLColumnDeclaration */
+    public function bigint($length = null)
+    {
+        return $this->set_type_and_length("bigint",$length);
+    }
+    /** @return SQLColumnDeclaration */
+    public function float()
+    {
+        return $this->set_type_and_length("float");
+    }
+
+    /** @return SQLColumnDeclaration */
+    public function text($length = null)
+    {
+        return $this->set_type_and_length("text",$length);
+    }
+    /** @return SQLColumnDeclaration */
+    public function tinytext()
+    {
+        return $this->set_type_and_length("tinytext",null);
+    }
+    /** @return SQLColumnDeclaration */
+    public function char($length = null)
+    {
+        return $this->set_type_and_length("char",$length);
+    }
+    /** @return SQLColumnDeclaration */
+    public function varchar($length = null)
+    {
+        return $this->set_type_and_length("varchar",$length);
+    }
+
+    /** @return SQLColumnDeclaration */
+    public function date()
+    {
+        return $this->set_type_and_length("date");
+    }
+    /** @return SQLColumnDeclaration */
+    public function time()
+    {
+        return $this->set_type_and_length("time");
+    }
+    /** @return SQLColumnDeclaration */
+    public function datetime()
+    {
+        return $this->set_type_and_length("datetime");
+    }
+
+    /** @return SQLColumnDeclaration */
+    public function comment($string)
+    {
+        $this->comment = sprintf(" COMMENT %s", new SQLString($string));
+        return $this;
+    }
+
+    /** @return SQLColumnDeclaration */
+    public function enum($array)
+    {
+        if(!is_array($array)){
+            throw new Exception("expected array for enum");
+        }
+        
+        $valueList = new SQLValueList();
+        for($i = 0; $i < count($array);$i++){
+            if(is_numeric($array[$i])){
+                $valueList->add(new SQLInt($array[$i]));
+            }
+            else{
+                $valueList->add(new SQLString($array[$i]));
+            }
+        }
+        $this->enum = sprintf(" enum(%s)", $valueList->__toString());
+        return $this;
+    }
+}
+
+class SQLPrimaryKey{
+    protected $key_word = "PRIMARY KEY";
+    private $column_name_array = array();
+    protected $key_name;
+
+    public function addColumn($column_name){
+        $this->column_name_array[] = new SQLIdentifier($column_name."");
+        return $this;
+    }
+    public function __toString()
+    {
+        return sprintf("%s%s (%s)",$this->key_word,$this->get_key_name(),join(",",$this->column_name_array));
+    }
+
+    private function get_key_name()
+    {
+        return $this->key_name ? " $this->key_name":"";
+    }
+}
+class SQLUniqueKey extends SQLPrimaryKey{
+    public function __construct($key_name)
+    {
+        $this->key_name = new SQLIdentifier($key_name);
+        $this->key_word = "UNIQUE KEY";
+    }
+}
+class SQLKey extends SQLPrimaryKey{
+    public function __construct($key_name)
+    {
+        $this->key_name = new SQLIdentifier($key_name);
+        $this->key_word = "KEY";
+    }
+}
+
+//$ddl
+class SQLAlterTableAddColumn implements ISQLCommand{
+    private $table_name;
+    private $columns_to_add = array();
+
+    private function __construct($name)
+    {
+        $this->table_name = new SQLIdentifier($name);
+    }
+    public static function name($name){
+        return new self($name);
+    }
+    public function add($declaration_for_column_or_fulltext_index_columm){
+        if(!is_a($declaration_for_column_or_fulltext_index_columm, "ParameterForAlterTableAdd")){
+            throw new Exception("expected column declaration or fulltext index column declaration for alter table add operation");
+        }
+        $this->columns_to_add[] = $declaration_for_column_or_fulltext_index_columm;
+        return $this;
+    }
+    public function __toString()
+    {
+        return sprintf("ALTER TABLE %s ADD %s",$this->table_name,join(",",$this->columns_to_add));
+    }
+}
+interface ParameterForAlterTableAdd{
+
+}
+
+
+
+class FullTextIndexDeclaration implements ParameterForAlterTableAdd{
+    private $column_identifier;
+    public function __construct($sql_identifier)
+    {
+        $this->throwExceptionIfNotSQLIdentifier($sql_identifier);
+        $this->column_identifier = $sql_identifier;
+    }
+
+    public function __toString()
+    {
+        return sprintf("FULLTEXT (%s)",$this->column_identifier);
+    }
+
+    private function throwExceptionIfNotSQLIdentifier($sql_identifier)
+    {
+        if (!is_a($sql_identifier, "ISQLIdentifier")) {
+            throw new exception ("SQLIdentifier expected for full text index declaration");
+        }
+    }
+}
+
+?>
+
+

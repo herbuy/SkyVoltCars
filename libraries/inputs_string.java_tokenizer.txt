@@ -1,0 +1,98 @@
+package commission;
+
+import java.io.*;
+
+
+public class Commission {
+    private String name;
+    private String designation;
+    private String month;
+    private int sale;
+    private double commission;
+
+    private BufferedReader reader;
+
+    public void input() throws IOException{
+        reader = new BufferedReader(
+                new InputStreamReader(System.in)
+        );
+
+        this.name = readNextString(
+                "Enter\" Name \of representative"
+        );
+        this.designation = readNextString(
+                'Enter Designation of representative'
+        );
+        this.month = readNextString(
+                "Enter Month"
+        );
+        this.sale = readNextInt(
+                "Enter Sale"
+        );
+
+        reader.close();
+    }
+
+    public void calculate(){
+        double percentage = 0;
+
+        if(sale <= 5000){
+            percentage = 0.05;
+        }
+        else if(sale > 5000 && sale <= 10000){
+            percentage = 0.10;
+        }
+        else if(sale > 10000 && sale <= 20000){
+            percentage = 0.20;
+        }
+        else if(sale > 20000){
+           percentage = 0.30;
+        }
+
+        commission = percentage * sale;
+    }
+
+    public void display(){
+         displayValue("----------------------------","");
+         displayValue("Name", name);
+         displayValue("Designation", designation);
+         displayValue("Month", month);
+         displayValue("Sale", sale);
+         displayValue("Commission", "$ "+commission);
+    }
+
+    //utility methods
+    private int readNextInt(String prompt)
+            throws IOException
+    {
+        System.out.println(prompt);
+        return Integer.parseUnsignedInt(reader.readLine());
+    }
+    private String readNextString(String prompt)
+            throws IOException
+    {
+        System.out.println(prompt);
+        return reader.readLine();
+    }
+    private void displayValue(
+            String description, Object value
+    ){
+        System.out.println(description+": "+ value);
+    }
+
+    public static void main(String[] args) {
+
+        try{
+            Commission comm = new Commission();
+            comm.input();
+            comm.calculate();
+            comm.display();
+        }
+        catch(IOException ex){
+            System.out.println(ex);
+        }
+    }
+
+}
+
+

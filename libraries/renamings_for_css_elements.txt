@@ -1,0 +1,5 @@
+CSSSelector->CSSElement
+CSSSimpleSelector->SimpleCSSElement
+CSSSelectorForElementsOfType->CSSElementOfType
+CSSSelectorForElementsOfClass->CSSElementOfClass
+CSSSelectorForElementWithId->CSSElementWithId
